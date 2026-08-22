@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+langchain
+langchain-groq
+langchain-community
+langchain-huggingface
+langchain-text-splitters
+faiss-cpu
+sentence-transformers
+yfinance
+scikit-learn
+pandas
+numpy
+python-dotenv
+boto3
