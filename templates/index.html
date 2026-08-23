@@ -242,15 +242,15 @@
                     </form>
                 </div>
 
-                <!-- Analysis Output Display Block -->
-                {% if response or result or analysis %}
-                <div class="card p-4">
+         <!-- Analysis Output Display -->
+                {% if response %}
+                <div class="card p-4 mt-4">
                     <div class="card-header-title">
                         <i class="fa-solid fa-square-poll-vertical text-info"></i>
                         <span>Agent Output</span>
                     </div>
                     <div class="result-container">
-                        <div style="white-space: pre-wrap; font-family: inherit;">{{ response or result or analysis }}</div>
+                        <div style="white-space: pre-wrap; font-family: inherit; line-height: 1.6;">{{ response }}</div>
                     </div>
                 </div>
                 {% endif %}
