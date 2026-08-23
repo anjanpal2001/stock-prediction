@@ -1,5 +1,8 @@
 from contextlib import asynccontextmanager
 import os
+
+# 1. Ensure models directory exists at startup
+os.makedirs("models", exist_ok=True)
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.templating import Jinja2Templates

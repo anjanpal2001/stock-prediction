@@ -173,7 +173,7 @@
                         <span>Model Training</span>
                     </div>
                     
-                    <form action="/train-ml" method="post" onsubmit="document.getElementById('train-btn-spinner').classList.remove('d-none');">
+                    <form id="train-form" action="/train-ml" method="post">
                         <div class="mb-3">
                             <label for="train-ticker">Stock Symbol</label>
                             <input 
@@ -191,8 +191,10 @@
                         </button>
                     </form>
 
+                    <div id="dynamic-train-status" class="d-none"></div>
+
                     {% if train_status or status or message %}
-                    <div class="status-box">
+                    <div class="status-box" id="server-train-status">
                         <i class="fa-solid fa-circle-info me-1 text-success"></i>
                         {{ train_status or status or message }}
                     </div>
@@ -208,7 +210,7 @@
                         <span>Financial Analysis Agent</span>
                     </div>
 
-                    <form action="/analyze" method="post" onsubmit="document.getElementById('analyze-btn-spinner').classList.remove('d-none');">
+                    <form id="analyze-form" action="/analyze" method="post">
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label for="analyze-ticker">Stock Symbol</label>
@@ -242,9 +244,20 @@
                     </form>
                 </div>
 
-         <!-- Analysis Output Display -->
+                <!-- Dynamic AJAX Output Display (Instant update without full reload) -->
+                <div id="dynamic-output-card" class="card p-4 mt-4 d-none">
+                    <div class="card-header-title">
+                        <i class="fa-solid fa-square-poll-vertical text-info"></i>
+                        <span>Agent Output</span>
+                    </div>
+                    <div class="result-container">
+                        <div id="dynamic-output-content" style="white-space: pre-wrap; font-family: inherit; line-height: 1.6;"></div>
+                    </div>
+                </div>
+
+                <!-- Server-side Jinja2 Fallback Output Display -->
                 {% if response %}
-                <div class="card p-4 mt-4">
+                <div class="card p-4 mt-4" id="server-response-card">
                     <div class="card-header-title">
                         <i class="fa-solid fa-square-poll-vertical text-info"></i>
                         <span>Agent Output</span>
@@ -259,5 +272,115 @@
         </div>
     </div>
 
+    <!-- Client Script supporting both Relative URLs & Direct Submissions -->
+    <script>
+        document.getElementById('analyze-form').addEventListener('submit', async function(e) {
+            const spinner = document.getElementById('analyze-btn-spinner');
+            const submitBtn = document.getElementById('analyze-btn');
+            const dynamicCard = document.getElementById('dynamic-output-card');
+            const dynamicContent = document.getElementById('dynamic-output-content');
+            const serverCard = document.getElementById('server-response-card');
+
+            spinner.classList.remove('d-none');
+            submitBtn.disabled = true;
+
+            if (serverCard) serverCard.style.display = 'none';
+
+            dynamicCard.classList.remove('d-none');
+            dynamicContent.innerText = 'Analyzing market data, querying model, and summarizing sentiment...';
+
+            const formData = new FormData(this);
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server returned HTTP ${response.status}`);
+                }
+
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const data = await response.json();
+                    dynamicContent.innerText = data.response || data.result || JSON.stringify(data, null, 2);
+                } else {
+                    const htmlText = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlText, 'text/html');
+                    const parsedResult = doc.querySelector('.result-container div') || doc.querySelector('.result-container');
+                    
+                    if (parsedResult) {
+                        dynamicContent.innerHTML = parsedResult.innerHTML;
+                    } else {
+                        document.open();
+                        document.write(htmlText);
+                        document.close();
+                    }
+                }
+            } catch (err) {
+                dynamicContent.innerText = 'Execution Error: ' + err.message;
+            } finally {
+                spinner.classList.add('d-none');
+                submitBtn.disabled = false;
+            }
+
+            e.preventDefault();
+        });
+
+        document.getElementById('train-form').addEventListener('submit', async function(e) {
+            const spinner = document.getElementById('train-btn-spinner');
+            const submitBtn = document.getElementById('train-btn');
+            const statusBox = document.getElementById('dynamic-train-status');
+            const serverStatus = document.getElementById('server-train-status');
+
+            spinner.classList.remove('d-none');
+            submitBtn.disabled = true;
+
+            if (serverStatus) serverStatus.style.display = 'none';
+
+            statusBox.className = 'status-box mt-3';
+            statusBox.classList.remove('d-none');
+            statusBox.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Training model and uploading artifacts to AWS S3...';
+
+            const formData = new FormData(this);
+
+            try {
+                const response = await fetch('/train-ml', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Training failed (HTTP ${response.status})`);
+                }
+
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const data = await response.json();
+                    statusBox.innerHTML = `<i class="fa-solid fa-circle-check me-1 text-success"></i> ${data.message || data.status || 'Training completed successfully.'}`;
+                } else {
+                    const htmlText = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlText, 'text/html');
+                    const parsedStatus = doc.querySelector('.status-box');
+
+                    if (parsedStatus) {
+                        statusBox.innerHTML = parsedStatus.innerHTML;
+                    } else {
+                        statusBox.innerHTML = '<i class="fa-solid fa-circle-check me-1 text-success"></i> Training finished successfully!';
+                    }
+                }
+            } catch (err) {
+                statusBox.innerHTML = `<i class="fa-solid fa-circle-exclamation me-1 text-danger"></i> Error: ${err.message}`;
+            } finally {
+                spinner.classList.add('d-none');
+                submitBtn.disabled = false;
+            }
+
+            e.preventDefault();
+        });
+    </script>
 </body>
 </html>
