@@ -1,4 +1,4 @@
-name: Full ML CI/CD Pipeline to EC2, Docker & S3
+name: Full ML CI/CD Pipeline to Amazon Linux EC2, Docker & S3
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Set up Docker Buildx
+      # 2. Set up Docker Buildx for container building
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -34,11 +34,12 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/finagent-app:latest
 
-      # 5. Deploy Container to Amazon Linux EC2
-      - name: Deploy to EC2
+      # 5. Deploy Container to Amazon Linux EC2 via SSH
+      - name: Deploy to Amazon Linux EC2
         uses: appleboy/ssh-action@v1.0.3
         env:
           DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKER_PASS: ${{ secrets.DOCKERHUB_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -46,13 +47,24 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
+          username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DOCKER_USER,GROQ_API_KEY,S3_BUCKET_NAME,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION
+          envs: DOCKER_USER,DOCKER_PASS,GROQ_API_KEY,S3_BUCKET_NAME,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION
           script: |
+            # 1. Ensure Docker service is running on Amazon Linux
+            sudo systemctl start docker
+
+            # 2. Authenticate to Docker Hub inside EC2
+            echo "$DOCKER_PASS" | sudo docker login -u "$DOCKER_USER" --password-stdin
+
+            # 3. Stop and delete old container if running
             sudo docker stop finagent-container || true
             sudo docker rm finagent-container || true
+
+            # 4. Pull the fresh image from Docker Hub
             sudo docker pull $DOCKER_USER/finagent-app:latest
+
+            # 5. Run new container with all runtime environment variables injected
             sudo docker run -d \
               --restart always \
               --name finagent-container \
@@ -63,4 +75,6 @@ jobs:
               -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
               -e AWS_REGION="$AWS_REGION" \
               $DOCKER_USER/finagent-app:latest
+
+            # 6. Clean dangling images to conserve EC2 disk storage
             sudo docker image prune -f
