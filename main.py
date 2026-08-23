@@ -50,37 +50,19 @@ def analyze_endpoint(
   if not agent_executor:
     agent_executor = get_financial_agent()
 
-  full_prompt = f"Analyze stock ticker {ticker.upper()}. Query: {query}"
-
   try:
-    # Pass as a unified input prompt
-    result = agent_executor.invoke({"input": full_prompt})
-
-    print("\n--- RAW AGENT OUTPUT ---")
-    print("DATA:", result)
-    print("-------------------------\n")
-
-    output = ""
-    if isinstance(result, dict):
-      output = result.get("output", "")
-      # Fallback if output key is empty string
-      if not output and "intermediate_steps" in result:
-        steps = result["intermediate_steps"]
-        if steps:
-          output = str(steps[-1][1])
-
-    if not output:
-      output = "Agent executed the request but did not return text. Please check the model system prompt."
-
+    # Invokes the agent function directly
+    result = agent_executor({"ticker": ticker, "input": query})
+    output = result.get("output", "No response returned from agent.")
   except Exception as e:
     output = f"Execution Error: {str(e)}"
-    print("Execution Error:", str(e))
 
   return templates.TemplateResponse(
       request,
       "index.html",
       {"response": output, "ticker": ticker, "query": query},
   )
+
 
 if __name__ == "__main__":
   uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

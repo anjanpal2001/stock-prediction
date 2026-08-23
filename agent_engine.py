@@ -11,9 +11,15 @@ from s3_utils import download_model_from_s3
 load_dotenv()
 
 
+# --- Tools Definition ---
 @tool
 def predict_stock_trend(ticker: str, last_price: float) -> str:
-  """Predicts next-day price using the trained ML model for a ticker and its closing price."""
+  """Predicts next-day price using the trained ML model for a ticker and its closing price.
+
+  Args:
+      ticker: The stock symbol (e.g., TCS.NS, AAPL).
+      last_price: The latest known closing price of the stock as a float.
+  """
   ticker = ticker.upper().strip()
   filename = f"{ticker}_model.pkl"
   local_path = f"models/{filename}"
@@ -38,7 +44,12 @@ def predict_stock_trend(ticker: str, last_price: float) -> str:
 
 @tool
 def query_live_financial_context(ticker: str, query: str) -> str:
-  """Fetches real-time fundamental ratios and recent market news for a ticker."""
+  """Fetches real-time fundamental ratios and recent market news for a ticker.
+
+  Args:
+      ticker: The stock symbol (e.g., TCS.NS, AAPL).
+      query: The specific financial question or news topic to retrieve.
+  """
   try:
     retriever = build_vector_store_from_ticker(ticker)
     docs = retriever.invoke(query)
@@ -48,66 +59,64 @@ def query_live_financial_context(ticker: str, query: str) -> str:
     return f"Error retrieving real-time data for {ticker}: {str(e)}"
 
 
-class FinancialAgent:
+# --- Agent Factory Function ---
+def get_financial_agent():
+  tools_map = {
+      "predict_stock_trend": predict_stock_trend,
+      "query_live_financial_context": query_live_financial_context,
+  }
 
-  def __init__(self):
-    self.tools = {
-        "predict_stock_trend": predict_stock_trend,
-        "query_live_financial_context": query_live_financial_context,
-    }
+  llm = ChatGroq(
+      model_name="qwen/qwen3.6-27b",
+      temperature=0.0,
+      api_key=os.getenv("GROQ_API_KEY"),
+  )
 
-    # 1. Base LLM with a verified Groq model
-    self.llm = ChatGroq(
-          model="openai/gpt-oss-20b",
-        temperature=0.1,
-        api_key=os.getenv("GROQ_API_KEY"),
-    )
+  model_with_tools = llm.bind_tools(list(tools_map.values()))
 
-    # 2. Bound model specifically for tool selection
-    self.model_with_tools = self.llm.bind_tools(list(self.tools.values()))
-
-  def invoke(self, inputs: dict) -> dict:
-    ticker = inputs.get("ticker", "").strip()
+  def run_agent(inputs: dict) -> dict:
+    ticker = inputs.get("ticker", "").strip().upper()
     user_query = inputs.get("input", "").strip()
 
-    system_prompt = (
-        "You are an expert AI Financial Analyst. Use your available tools to"
-        " fetch market data, news sentiment, and ML predictions. "
-        "Always provide a well-structured, clear summary answering the user's"
-        " question."
-    )
-
     messages = [
-        SystemMessage(content=system_prompt),
+        SystemMessage(
+            content=(
+                "You are an expert AI Financial Analyst. Use your available"
+                " tools to fetch market data and ML price predictions. Once"
+                " data is gathered, provide a clear, detailed final financial"
+                " summary in plain text."
+            )
+        ),
         HumanMessage(
-            content=f"Target Ticker: {ticker}\nUser Query: {user_query}"
+            content=f"Stock Ticker: {ticker}\nUser Query: {user_query}"
         ),
     ]
 
-    response = self.model_with_tools.invoke(messages)
-
-    # If tools were invoked
-    if response.tool_calls:
+    # Tool calling loop
+    for _ in range(5):
+      response = model_with_tools.invoke(messages)
       messages.append(response)
+
+      if not response.tool_calls:
+        break
+
       for tool_call in response.tool_calls:
         tool_name = tool_call["name"]
         tool_args = tool_call["args"]
 
-        if tool_name in self.tools:
-          tool_output = self.tools[tool_name].invoke(tool_args)
-          messages.append(
-              ToolMessage(
-                  content=str(tool_output), tool_call_id=tool_call["id"]
-              )
-          )
+        if tool_name in tools_map:
+          try:
+            tool_output = tools_map[tool_name].invoke(tool_args)
+          except Exception as err:
+            tool_output = f"Tool execution error: {err}"
+        else:
+          tool_output = f"Tool {tool_name} not found."
 
-      # 3. Use the base LLM to formulate the final answer from tool outputs
-      final_response = self.llm.invoke(messages)
-      content = final_response.content
-    else:
-      content = response.content
+        messages.append(
+            ToolMessage(content=str(tool_output), tool_call_id=tool_call["id"])
+        )
 
-    # Handle string or list content blocks
+    content = messages[-1].content
     if isinstance(content, list):
       text_output = "".join(
           [c.get("text", "") if isinstance(c, dict) else str(c) for c in content]
@@ -117,6 +126,4 @@ class FinancialAgent:
 
     return {"output": text_output}
 
-
-def get_financial_agent():
-  return FinancialAgent()
+  return run_agent

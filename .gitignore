@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Ignore model artifacts
+models/*.pkl
+models/*.joblib
+
+# Keep the models folder directory structure
+!models/.gitkeep
