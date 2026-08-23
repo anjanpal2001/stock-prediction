@@ -173,7 +173,7 @@
                         <span>Model Training</span>
                     </div>
                     
-                    <form action="/train-ml" method="post">
+                    <form action="/train-ml" method="post" onsubmit="document.getElementById('train-btn-spinner').classList.remove('d-none');">
                         <div class="mb-3">
                             <label for="train-ticker">Stock Symbol</label>
                             <input 
@@ -185,15 +185,16 @@
                                 required
                             >
                         </div>
-                        <button type="submit" class="btn btn-train w-100">
+                        <button type="submit" class="btn btn-train w-100" id="train-btn">
+                            <span id="train-btn-spinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
                             <i class="fa-solid fa-cloud-arrow-up me-1"></i> Train & Save to S3
                         </button>
                     </form>
 
-                    {% if train_status %}
+                    {% if train_status or status or message %}
                     <div class="status-box">
-                        <i class="fa-solid fa-circle-info me-1"></i>
-                        {{ train_status }}
+                        <i class="fa-solid fa-circle-info me-1 text-success"></i>
+                        {{ train_status or status or message }}
                     </div>
                     {% endif %}
                 </div>
@@ -207,7 +208,7 @@
                         <span>Financial Analysis Agent</span>
                     </div>
 
-                    <form action="/analyze" method="post">
+                    <form action="/analyze" method="post" onsubmit="document.getElementById('analyze-btn-spinner').classList.remove('d-none');">
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label for="analyze-ticker">Stock Symbol</label>
@@ -232,7 +233,8 @@
                                 ></textarea>
                             </div>
                             <div class="col-12 text-end">
-                                <button type="submit" class="btn btn-analyze">
+                                <button type="submit" class="btn btn-analyze" id="analyze-btn">
+                                    <span id="analyze-btn-spinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
                                     <i class="fa-solid fa-robot me-1"></i> Execute Agent
                                 </button>
                             </div>
@@ -240,15 +242,15 @@
                     </form>
                 </div>
 
-                <!-- Analysis Output Display -->
-                {% if response %}
+                <!-- Analysis Output Display Block -->
+                {% if response or result or analysis %}
                 <div class="card p-4">
                     <div class="card-header-title">
                         <i class="fa-solid fa-square-poll-vertical text-info"></i>
                         <span>Agent Output</span>
                     </div>
                     <div class="result-container">
-                        <div style="white-space: pre-line;">{{ response }}</div>
+                        <div style="white-space: pre-wrap; font-family: inherit;">{{ response or result or analysis }}</div>
                     </div>
                 </div>
                 {% endif %}
