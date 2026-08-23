@@ -33,18 +33,6 @@ def home(request: Request):
   return templates.TemplateResponse(request, "index.html", {})
 
 
-@app.post("/train-ml")
-def train_model_endpoint(request: Request, ticker: str = Form(...)):
-  try:
-    status = train_and_save_model(ticker=ticker)
-  except Exception as e:
-    status = f"Training Error: {str(e)}"
-
-  return templates.TemplateResponse(
-      request, "index.html", {"train_status": status, "ticker": ticker}
-  )
-
-
 @app.post("/analyze")
 def analyze_endpoint(
     request: Request, ticker: str = Form(...), query: str = Form(...)
@@ -54,16 +42,46 @@ def analyze_endpoint(
     agent_executor = get_financial_agent()
 
   try:
-    # Invokes the agent function directly
+    # run_agent expects a dict with "ticker" and "input" keys, NOT a string
     result = agent_executor({"ticker": ticker, "input": query})
-    output = result.get("output", "No response returned from agent.")
+
+    # run_agent always returns {"output": text}, but keep this defensive
+    # in case the agent implementation changes later
+    if isinstance(result, dict):
+      output = (
+          result.get("output")
+          or result.get("response")
+          or result.get("result")
+          or str(result)
+      )
+    else:
+      output = getattr(result, "content", str(result))
+
   except Exception as e:
     output = f"Execution Error: {str(e)}"
 
   return templates.TemplateResponse(
-      request,
-      "index.html",
-      {"response": output, "ticker": ticker, "query": query},
+      request=request,
+      name="index.html",
+      context={"response": output, "ticker": ticker, "query": query},
+  )
+
+
+@app.post("/train-ml")
+def train_ml_endpoint(request: Request, ticker: str = Form(...)):
+  ticker = ticker.strip().upper()
+
+  try:
+    # Expected to train a model for the ticker and upload it to S3,
+    # returning a human-readable status string
+    status = train_and_save_model(ticker)
+  except Exception as e:
+    status = f"Training Error: {str(e)}"
+
+  return templates.TemplateResponse(
+      request=request,
+      name="index.html",
+      context={"train_status": status, "ticker": ticker},
   )
 
 

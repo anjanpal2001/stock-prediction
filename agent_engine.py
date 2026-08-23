@@ -74,6 +74,32 @@ def get_financial_agent():
 
   model_with_tools = llm.bind_tools(list(tools_map.values()))
 
+  def _extract_text(message) -> str:
+    """Pulls plain text out of an AIMessage, handling list-content and
+    reasoning-model responses where the real answer sometimes lands in
+    additional_kwargs instead of .content."""
+    content = message.content
+
+    if isinstance(content, list):
+      text = "".join(
+          c.get("text", "") if isinstance(c, dict) else str(c)
+          for c in content
+      )
+    else:
+      text = str(content) if content else ""
+
+    # Some reasoning-style models (Qwen thinking variants, etc.) put the
+    # actual answer in additional_kwargs instead of .content.
+    if not text.strip():
+      kwargs = getattr(message, "additional_kwargs", {}) or {}
+      text = (
+          kwargs.get("reasoning_content")
+          or kwargs.get("reasoning")
+          or ""
+      )
+
+    return text.strip()
+
   def run_agent(inputs: dict) -> dict:
     ticker = inputs.get("ticker", "").strip().upper()
     user_query = inputs.get("input", "").strip()
@@ -92,10 +118,23 @@ def get_financial_agent():
         ),
     ]
 
+    last_text = ""
+
     # Tool calling loop
-    for _ in range(5):
+    for i in range(5):
       response = model_with_tools.invoke(messages)
       messages.append(response)
+
+      # --- Debug logging: check your server console/terminal ---
+      print(
+          f"[agent iter {i}] content={response.content!r} "
+          f"tool_calls={response.tool_calls} "
+          f"additional_kwargs={getattr(response, 'additional_kwargs', {})}"
+      )
+
+      text_now = _extract_text(response)
+      if text_now:
+        last_text = text_now
 
       if not response.tool_calls:
         break
@@ -112,17 +151,26 @@ def get_financial_agent():
         else:
           tool_output = f"Tool {tool_name} not found."
 
+        print(f"[agent iter {i}] tool={tool_name} args={tool_args} -> {tool_output!r}")
+
         messages.append(
             ToolMessage(content=str(tool_output), tool_call_id=tool_call["id"])
         )
-
-    content = messages[-1].content
-    if isinstance(content, list):
-      text_output = "".join(
-          [c.get("text", "") if isinstance(c, dict) else str(c) for c in content]
-      )
     else:
-      text_output = str(content)
+      # Loop exhausted all 5 iterations without a final break (model kept
+      # calling tools). Log it so it's visible this is why output may be thin.
+      print("[agent] WARNING: hit max tool-call iterations (5) without a final answer.")
+
+    text_output = _extract_text(messages[-1]) or last_text
+
+    if not text_output:
+      text_output = (
+          "The agent finished running but did not return any text. This"
+          " usually means the model only returned tool calls, or the"
+          " response text landed outside the expected field. Check the"
+          " server console logs for the [agent iter] debug lines to see"
+          " exactly what the model returned at each step."
+      )
 
     return {"output": text_output}
 
