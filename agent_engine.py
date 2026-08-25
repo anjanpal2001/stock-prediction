@@ -12,13 +12,16 @@ load_dotenv()
 
 
 # --- Tools Definition ---
+import yfinance as yf
+
 @tool
-def predict_stock_trend(ticker: str, last_price: float) -> str:
-  """Predicts next-day price using the trained ML model for a ticker and its closing price.
+def predict_stock_trend(ticker: str, last_price: float = None) -> str:
+  """Predicts next-day price using the trained ML model for a ticker.
 
   Args:
       ticker: The stock symbol (e.g., TCS.NS, AAPL).
-      last_price: The latest known closing price of the stock as a float.
+      last_price: Optional. Ignored if real market data can be fetched;
+          kept only as a fallback label for the response text.
   """
   ticker = ticker.upper().strip()
   filename = f"{ticker}_model.pkl"
@@ -34,12 +37,34 @@ def predict_stock_trend(ticker: str, last_price: float) -> str:
       )
 
   model = joblib.load(local_path)
+
+  # --- বাস্তব সাম্প্রতিক প্রাইস হিস্টরি আনা হচ্ছে, ফেক ভ্যালুর বদলে ---
+  hist = yf.download(ticker, period="3mo", progress=False)
+  if isinstance(hist.columns, pd.MultiIndex):
+    hist.columns = hist.columns.get_level_values(0)
+
+  if hist.empty or len(hist) < 21:
+    return f"Not enough recent price history for {ticker} to build real features."
+
+  hist["MA_5"] = hist["Close"].rolling(window=5).mean()
+  hist["MA_20"] = hist["Close"].rolling(window=20).mean()
+  hist = hist.dropna()
+
+  latest = hist.iloc[-1]
+  close_lag1 = latest["Close"]
+  close_lag2 = hist.iloc[-2]["Close"]
+  ma_5 = latest["MA_5"]
+  ma_20 = latest["MA_20"]
+
   input_data = pd.DataFrame(
-      [[last_price, last_price * 0.99, last_price * 1.01, last_price]],
+      [[close_lag1, close_lag2, ma_5, ma_20]],
       columns=["Close_lag1", "Close_lag2", "MA_5", "MA_20"],
   )
   prediction = model.predict(input_data)[0]
-  return f"ML Model Predicted Next-Day Price for {ticker}: ${prediction:.2f}"
+  return (
+      f"ML Model Predicted Next-Day Price for {ticker}: ${prediction:.2f} "
+      f"(based on last close ${close_lag1:.2f} on {hist.index[-1].date()})"
+  )
 
 
 @tool

@@ -9,7 +9,7 @@ def build_vector_store_from_ticker(ticker:str):
     stock=yf.Ticker(ticker)
     # 1. Fetch live company profile and key financecials
     
-    info=stock.info()
+    info=stock.info
     summary=info.get("longBusinessSummary","No company profile found.")
     market_cap=info.get("marketCap","N/A")
     trailing_pe=info.get("trailingPE","N/A")
@@ -42,8 +42,8 @@ def build_vector_store_from_ticker(ticker:str):
     
     #4.Chunk text and generative vector index
     splitter=RecursiveCharacterTextSplitter(chunk_size=400,chunk_overlap=60)
-    docs_split=splitter.spplit_documents([doc])
-    embeddings=HuggingFaceEmbeddings(model_name="sentence-transformer/all-MiniLM-L6-v2")
+    docs_split=splitter.split_documents([doc])
+    embeddings=HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     vectorstore=FAISS.from_documents(docs_split,embeddings)
     return vectorstore.as_retriever()
     
