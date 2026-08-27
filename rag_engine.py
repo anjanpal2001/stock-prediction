@@ -19,10 +19,10 @@ def build_vector_store_from_ticker(ticker:str):
     
     # Fetch current market headlines
     news_record=stock.news or []
-    news_text="\n".join([
-        f"- Title: {item.get('title',' ')}"
-        for item in news_record[:5]
-    ])
+    news_text = "\n".join([
+    f"- Title: {item.get('content', {}).get('title', item.get('title', 'Untitled'))}"
+    for item in news_record[:5]
+])
     
     # 3.Create raw context
     full_text=f"""
